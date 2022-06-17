@@ -104,7 +104,7 @@ Last login: Fri Jun 17 17:35:30 2022 from 192.168.56.1
 ```
 iptables -t nat -A PREROUTING -p tcp -d 192.168.56.13 --dport 8080 -j DNAT --to-destination 192.168.0.2:80
 iptables -t nat -A POSTROUTING -s 192.168.56.0/24 -d 192.168.0.2 -j MASQUERADE
-iptables -A FORWARD -i eth2 -d 192.168.0.2 -p tcp --dport 80 -j ACCEP
+iptables -A FORWARD -i eth2 -d 192.168.0.2 -p tcp --dport 80 -j ACCEPT
 ```
 2. Проверка работоспособности проброса c хостовой машины.
 ```
