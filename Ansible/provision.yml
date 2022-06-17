@@ -1,0 +1,242 @@
+---
+
+- name: Config Servers
+  hosts: Servers
+  gather_facts: no
+  become: true
+
+  tasks:
+#################################  inetRouter Configuration   ##########################################
+    - name: Set up NAT and Port Knocking on inetRouter
+      block:
+        - name: install iptables on inetRouter
+          yum:        
+            name:
+              - iptables
+              - iptables-services
+            state: present
+            update_cache: true
+              
+        - name: copy iptables config on inetRouter
+          template:
+            src: templates/iptables_inetRouter.j2
+            dest: /etc/sysconfig/iptables
+            owner: root
+            group: root
+            mode: 0600
+            
+        - name: start and enable iptables service on inetRouter
+          service:
+            name: iptables
+            state: restarted
+            enabled: true
+        
+        - name: set up route on inetRouter eth1
+          template:
+            src: templates/inetRouter_route_eth1.j2
+            dest: /etc/sysconfig/network-scripts/route-eth1
+            owner: root
+            group: root
+            mode: 0644
+        
+        - name: restart network service on inetRouter
+          service:
+            name: network
+            state: restarted
+      when: inventory_hostname == "inetRouter"
+      tags:
+        - inetRouter      
+#################################  Install traceroute and tcpdump ##########################################
+    - name: Install traceroute and tcpdump on Centos_srv
+      yum:        
+        name:
+          - traceroute
+          - tcpdump      
+        state: present
+      when: inventory_hostname == "inetRouter" or inventory_hostname == "centralRouter" or inventory_hostname == "centralServer" or inventory_hostname == "inetRouter2"   
+      tags:
+        - soft
+
+#################################  Routing Configuration on Routers   ##########################################
+    - name: set up forward packages across routers
+      sysctl:
+        name: net.ipv4.conf.all.forwarding
+        value: '1'
+        state: present
+      when: "'routers' in group_names"  
+
+#################################  centralRouter Configuration   ##########################################
+    - name: centralRouter Configuration
+      block:
+        - name: install nmap on centralRouter
+          yum:        
+            name:
+              - nmap
+            state: present
+
+        - name: create test ssh script on centralRouter
+          template:
+            src: templates/knock_sh.j2
+            dest: /root/knock.sh
+            owner: root
+            group: root
+            mode: 0755
+
+        - name: disable default route for centralRouter
+          lineinfile:
+            dest: /etc/sysconfig/network-scripts/ifcfg-eth0
+            line: DEFROUTE=no
+
+        - name: add default gateway for centralRouter
+          lineinfile:
+            dest: /etc/sysconfig/network-scripts/ifcfg-eth1
+            line: GATEWAY=192.168.255.1
+ 
+        - name: restart network service on centralRouter
+          service:
+            name: network
+            state: restarted  
+      when: inventory_hostname == "centralRouter"
+      tags:
+        - centralRouter      
+
+#################################  centralServer Configuration   ##########################################
+    - name: centralServer Configuration
+      block:
+        - name: disable default route for centralServer
+          lineinfile:
+            dest: /etc/sysconfig/network-scripts/ifcfg-eth0
+            line: DEFROUTE=no
+
+        - name: add default gateway for centralServer
+          lineinfile:
+            dest: /etc/sysconfig/network-scripts/ifcfg-eth1
+            line: GATEWAY=192.168.0.1
+
+        - name: restart network service on centralServer
+          service:
+            name: network
+            state: restarted
+
+        - name: Install EPEL Repo package from standart repo
+          yum:
+            name: epel-release
+            state: present
+
+        - name: Install NGINX package from EPEL Repo
+          yum:
+            name: nginx
+            state: present
+          notify:
+            - restart nginx
+      when: inventory_hostname == "centralServer"    
+      tags:
+        - centralServer            
+
+#################################  inetRouter2 Configuration   ##########################################
+    - name: inetRouter2 Configuration
+      block:
+        - name: install iptables on inetRouter2
+          yum:        
+            name:
+              - iptables
+              - iptables-services
+            state: present
+            update_cache: true
+
+        - name: copy iptables config on inetRouter2
+          template:
+            src: templates/iptables_inetRouter2.j2
+            dest: /etc/sysconfig/iptables
+            owner: root
+            group: root
+            mode: 0600
+            
+        - name: start and enable iptables service on inetRouter2
+          service:
+            name: iptables
+            state: restarted
+            enabled: true
+
+        - name: disable default route for inetRouter2
+          lineinfile:
+            dest: /etc/sysconfig/network-scripts/ifcfg-eth0
+            line: DEFROUTE=no
+
+        - name: add default gateway for inetRouter2
+          lineinfile:
+            dest: /etc/sysconfig/network-scripts/ifcfg-eth2
+            line: GATEWAY=192.168.56.1
+
+        - name: set up route on inetRouter2 eth1
+          template:
+            src: templates/inetRouter2_route_eth1.j2
+            dest: /etc/sysconfig/network-scripts/route-eth1
+            owner: root
+            group: root
+            mode: 0644
+        
+        - name: restart network service on inetRouter2
+          service:
+            name: network
+            state: restarted            
+      when: inventory_hostname == "inetRouter2"
+      tags:
+        - inetRouter2
+
+#################################  SSH_config all servers ##########################################
+
+    - name: create ssh_client_config.j2
+      template:
+        src: templates/ssh_client_config.j2
+        dest: /root/.ssh/config
+        owner: root
+        group: root
+        mode: '0600'
+
+#################################  Reboot all servers ##########################################      
+    - name: Reboot all servers
+      reboot:
+      tags:
+        - reboot
+
+#################################  Checking network connectivity ########################################## 
+    - name: Checking by ping and traceroute
+      block:
+        - name: Ping Executing
+          shell: "ping -c 2 {{ item.ip }}"
+          loop: 
+            - { server: 'inetRouter', ip: 192.168.255.1 }
+            - { server: 'centralRouter', ip: 192.168.255.2 }
+            - { server: 'centralServer', ip: 192.168.0.2 }
+            - { server: 'inetRouter2', ip: 192.168.0.34 }
+          register: command_output
+          ignore_errors: yes
+          no_log: true
+          changed_when: false
+
+        - name: Ping Report
+          debug: 
+            msg: "PING SUCCESS"
+          when: item.rc == 0
+          loop: "{{ command_output.results }}"
+          loop_control: 
+            label: "{{ item.item }}"    
+
+        - name: Execute traceroute
+          shell: "sudo traceroute ya.ru"
+          register: result  
+
+        - name: Traceroute Report
+          debug:
+            msg: "{{ result['stdout_lines'] }}"                 
+      tags:
+        - test_net
+
+#################################  Handlers ########################################## 
+  handlers:
+    - name: restart nginx
+      systemd:
+        name: nginx
+        state: restarted
+        enabled: yes        

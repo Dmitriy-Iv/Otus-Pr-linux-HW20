@@ -1,0 +1,27 @@
+Servers:
+  hosts:
+    centralServer:
+      ansible_host: 192.168.56.12
+      ansible_port: 22
+      ansible_private_key_file: .vagrant/machines/centralServer/virtualbox/private_key  
+
+  children:
+    routers:
+      hosts:
+        inetRouter:
+          ansible_host: 192.168.56.10
+          ansible_port: 22
+          ansible_private_key_file: .vagrant/machines/inetRouter/virtualbox/private_key  
+        
+        centralRouter:
+          ansible_host: 192.168.56.11
+          ansible_port: 22
+          ansible_private_key_file: .vagrant/machines/centralRouter/virtualbox/private_key
+
+        inetRouter2:
+          ansible_host: 192.168.56.13
+          ansible_port: 22
+          ansible_private_key_file: .vagrant/machines/inetRouter2/virtualbox/private_key
+
+
+
